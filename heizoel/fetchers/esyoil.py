@@ -38,9 +38,9 @@ FIXED_PARAMS = {
     "deliveryTimes": "normal",
     "payment_type": "all",
     "short_vehicle": "withTrailer",
-    "prod": "normal",
     "hose": "fortyMetre",
 }
+QUALITIES = ("normal", "premium")
 PLAUSIBLE_CT = (30.0, 400.0)
 TOTAL_TOLERANCE = 0.02
 
@@ -53,7 +53,7 @@ def _num(text: str) -> float:
     return float(text.replace(".", "").replace(",", "."))
 
 
-def _parse_li(li, plz: str, liter: int, fallback_url: str) -> PortalOffer | None:
+def _parse_li(li, plz: str, liter: int, fallback_url: str, quality: str = "normal") -> PortalOffer | None:
     text = li.get_text(" ", strip=True)
     link = li.find("a", href=re.compile(r"^(?:https?://[^/]+)?/heizoelhaendler/"))
     prices = _EUR.findall(text)
@@ -80,17 +80,19 @@ def _parse_li(li, plz: str, liter: int, fallback_url: str) -> PortalOffer | None
         count = int(mr.group(2).replace(".", ""))
     href = str(link.get("href", ""))
     url = href if href.startswith("http") else BASE_URL + href
-    return PortalOffer("esyoil", dealer, ct, total, days, url or fallback_url, liter, plz, rating, count)
+    return PortalOffer("esyoil", dealer, ct, total, days, url or fallback_url, liter, plz, rating, count, quality)
 
 
-def parse_esyoil(html: str, plz: str, liter: int, fallback_url: str = SEARCH_URL) -> list[PortalOffer]:
+def parse_esyoil(
+    html: str, plz: str, liter: int, fallback_url: str = SEARCH_URL, quality: str = "normal"
+) -> list[PortalOffer]:
     soup = BeautifulSoup(html, "lxml")
     seen: set[tuple[str, float, float | None]] = set()
     out: list[PortalOffer] = []
     for li in soup.find_all("li"):
         if li.find("li") is not None or "Jetzt Bestellen" not in li.get_text():
             continue
-        offer = _parse_li(li, plz, liter, fallback_url)
+        offer = _parse_li(li, plz, liter, fallback_url, quality)
         if offer is None:
             continue
         key = (offer.dealer, offer.ct_per_liter, offer.total_eur)
@@ -107,8 +109,12 @@ def parse_esyoil(html: str, plz: str, liter: int, fallback_url: str = SEARCH_URL
     return out
 
 
-def fetch_esyoil(plz: str, liter: int, client: httpx.Client | None = None) -> list[PortalOffer]:
-    params = {"zipcode": plz, "amount": str(liter), **FIXED_PARAMS}
+def fetch_esyoil(
+    plz: str, liter: int, quality: str = "normal", client: httpx.Client | None = None
+) -> list[PortalOffer]:
+    if quality not in QUALITIES:
+        raise ValueError(f"Unbekannte Heizölqualität: {quality!r}")
+    params = {"zipcode": plz, "amount": str(liter), **FIXED_PARAMS, "prod": quality}
     own = client is None
     c = client or httpx.Client(timeout=TIMEOUT, headers={"User-Agent": USER_AGENT}, follow_redirects=True)
     try:
@@ -124,7 +130,7 @@ def fetch_esyoil(plz: str, liter: int, client: httpx.Client | None = None) -> li
             c.close()
     if resp.status_code != 200:
         raise PortalError(f"esyoil: HTTP {resp.status_code}")
-    return parse_esyoil(resp.text, plz, liter, str(resp.url))
+    return parse_esyoil(resp.text, plz, liter, str(resp.url), quality)
 
 
 PROVIDERS["esyoil"] = fetch_esyoil

@@ -33,6 +33,12 @@
   <section class="bg-white rounded-lg shadow-sm p-4">
     <h2 class="font-semibold">Dein günstigstes Angebot heute</h2>
     <p class="text-xs text-slate-500 mb-3">Angebote für PLZ {{ profile.plz }}, {{ offer_liter|liter }} Liter{% if portal_offers %} · Stand {{ offers_info.stand }}{% endif %}</p>
+    <div class="flex gap-2 mb-3 text-sm" role="tablist" aria-label="Heizölqualität">
+      {% for q, label in quality_labels.items() %}
+      <a href="/?quality={{ q }}" role="tab" aria-selected="{{ 'true' if q == offer_quality else 'false' }}"
+         class="rounded-md border px-3 py-1 {% if q == offer_quality %}bg-green-700 border-green-700 text-white font-medium{% else %}border-slate-300 text-slate-700{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
     {% if portal_offers %}
       {% set best = portal_offers[0] %}
       <div class="rounded-lg border border-green-300 bg-green-50 p-4">
@@ -50,9 +56,21 @@
       </p>
       {% endif %}
     {% else %}
-      <p class="text-sm text-slate-700">Noch keine Angebote geladen.</p>
+      <p class="text-sm text-slate-700">Noch keine Angebote geladen.{% if offer_quality == "premium" %} (Premium){% endif %}</p>
       {% if no_portal %}<p class="text-xs text-slate-500 mt-1">{{ no_portal_note }}</p>{% endif %}
     {% endif %}
+
+    {% if quality_compare %}
+    <p class="mt-3 text-sm text-slate-700">
+      {% if quality_compare.missing %}{{ quality_compare.missing }}-Angebote noch nicht geladen.
+      {% elif quality_compare.premium_more %}Premium kostet hier zurzeit etwa {{ quality_compare.diff_ct|ct1 }} Cent je Liter mehr ({{ quality_compare.diff_eur|eur }} bei {{ quality_compare.liter|liter }} Litern).
+      {% else %}Premium kostet hier zurzeit etwa {{ quality_compare.diff_ct|ct1 }} Cent je Liter weniger ({{ quality_compare.diff_eur|eur }} bei {{ quality_compare.liter|liter }} Litern).{% endif %}
+    </p>
+    {% endif %}
+    <details class="mt-2 text-xs text-slate-600">
+      <summary class="cursor-pointer underline text-blue-700">Was ist Premium-Heizöl?</summary>
+      <p class="mt-1">Standardheizöl (schwefelarm) ist das normale Produkt. Premium enthält Zusätze, die den Tank sauberer halten und den Verbrauch leicht senken sollen. Ob sich der Aufpreis lohnt, hängt vom Kessel ab; moderne Brennwertkessel profitieren eher.</p>
+    </details>
 
     <form method="post" action="/offers/refresh" class="mt-4 flex flex-wrap items-end gap-2 text-sm">
       <label class="flex-1 min-w-[8rem]">Menge in Litern

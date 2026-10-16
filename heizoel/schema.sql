@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     notify_channel           TEXT NOT NULL DEFAULT 'none' CHECK (notify_channel IN ('mail', 'none')),
     threshold_percentile     INTEGER NOT NULL DEFAULT 20,
     offer_liter              INTEGER,                  -- Wunschmenge für Angebote, NULL = automatisch aus Bedarf
+    offer_quality            TEXT NOT NULL DEFAULT 'normal',  -- gewählte Heizölqualität: 'normal' | 'premium'
     learned_annual_liter     REAL,                     -- aus Füllständen gelernter Jahresverbrauch
     learned_days             INTEGER,
     learned_n                INTEGER,
@@ -159,6 +160,7 @@ CREATE TABLE IF NOT EXISTS portal_offers (
     total_eur     REAL,
     delivery_days INTEGER,
     url           TEXT,
+    quality       TEXT NOT NULL DEFAULT 'normal',  -- 'normal' | 'premium'
     fetched_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_portal_offers_lookup ON portal_offers(plz, liter, date);

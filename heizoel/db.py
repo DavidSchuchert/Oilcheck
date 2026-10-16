@@ -42,6 +42,10 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("profiles", "learned_n", "ALTER TABLE profiles ADD COLUMN learned_n INTEGER"),
     ("profiles", "learned_at", "ALTER TABLE profiles ADD COLUMN learned_at TEXT"),
     ("profiles", "learned_confidence", "ALTER TABLE profiles ADD COLUMN learned_confidence REAL"),
+    ("profiles", "offer_quality",
+     "ALTER TABLE profiles ADD COLUMN offer_quality TEXT NOT NULL DEFAULT 'normal'"),
+    ("portal_offers", "quality",
+     "ALTER TABLE portal_offers ADD COLUMN quality TEXT NOT NULL DEFAULT 'normal'"),
 ]
 
 

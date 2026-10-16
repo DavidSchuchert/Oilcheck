@@ -390,6 +390,23 @@ def _offers_info(rows: list[sqlite3.Row], rec, ref_info, liter: int) -> dict | N
     }
 
 
+QUALITY_LABELS = {"normal": "Standard", "premium": "Premium"}
+
+
+def _quality_compare(rows_by_quality: dict[str, list[sqlite3.Row]]) -> dict | None:
+    """Preisunterschied der jeweils günstigsten Angebote (Premium minus Standard) oder Hinweis."""
+    missing = [q for q, rows in rows_by_quality.items() if not rows]
+    if len(missing) == len(rows_by_quality):
+        return None
+    if missing:
+        return {"missing": QUALITY_LABELS[missing[0]]}
+    std, prem = rows_by_quality["normal"][0], rows_by_quality["premium"][0]
+    diff = prem["ct_per_liter"] - std["ct_per_liter"]
+    liter = prem["liter"]
+    return {"missing": None, "diff_ct": abs(diff), "diff_eur": abs(diff) * liter / 100,
+            "liter": liter, "premium_more": diff >= 0}
+
+
 @router.get("/")
 def dashboard(request: Request, user=DEP_profile):
     uid = user["id"]
@@ -463,8 +480,17 @@ def dashboard(request: Request, user=DEP_profile):
         profile["min_order_liter"], rec["need_liter"] if rec else None,
         profile["offer_liter"], tank,
     )
-    portal_offers = offers_mod.load_offers(profile["plz"], offer_liter)
+    quality = profile["offer_quality"] if profile["offer_quality"] in offers_mod.QUALITIES else "normal"
+    wanted_quality = request.query_params.get("quality")
+    if wanted_quality in offers_mod.QUALITIES and wanted_quality != quality:
+        quality = wanted_quality
+        db.execute("UPDATE profiles SET offer_quality = ? WHERE user_id = ?", (quality, uid))
+    rows_by_quality = {
+        q: offers_mod.load_offers(profile["plz"], offer_liter, q) for q in offers_mod.QUALITIES
+    }
+    portal_offers = rows_by_quality[quality]
     offers_info = _offers_info(portal_offers, rec, ref_info, offer_liter)
+    quality_compare = _quality_compare(rows_by_quality)
     return _render(
         request, "dashboard.html", user=user, profile=profile, rec=rec, ref=ref_info,
         step=step_info, need=need, fill_liter=fill_liter, est_liter=est_liter,
@@ -475,6 +501,8 @@ def dashboard(request: Request, user=DEP_profile):
         llm_driver=settings.llm_driver, hints_open=_open_hints_count(),
         chart_json=json.dumps(chart), today=today.isoformat(),
         portal_offers=portal_offers, offers_info=offers_info,
+        offer_quality=quality, quality_compare=quality_compare,
+        quality_labels=QUALITY_LABELS,
         offer_liter=offer_liter, auto_liter=auto_liter,
         offer_liter_custom=profile["offer_liter"] is not None,
         offer_min=min(500, tank),
@@ -520,18 +548,31 @@ def offers_refresh(request: Request, liter: str = Form(""), user=DEP_profile):
         _flash(request, f"Zuletzt vor {minutes} Minuten abgerufen, bitte kurz warten.", "warn")
         return _go("/")
     try:
-        found = offers_mod.fetch_offers(profile["plz"], liter)
-    except Exception as exc:
-        log.exception("fetch_offers fehlgeschlagen")
+        found_by_quality: dict[str, list] = {}
+        failures: list[Exception] = []
+        for i, q in enumerate(offers_mod.QUALITIES):
+            if i:
+                time.sleep(offers_mod.PAUSE_SECONDS)
+            try:
+                found_by_quality[q] = offers_mod.fetch_offers(profile["plz"], liter, q)
+            except Exception as exc:
+                log.exception("fetch_offers fehlgeschlagen (%s)", q)
+                failures.append(exc)
+        if not found_by_quality:
+            raise failures[0]
+    except Exception as exc:  # noqa: BLE001
         _flash(request, f"Abruf fehlgeschlagen: {exc}", "error")
         return _go("/")
+    found = [o for rows in found_by_quality.values() for o in rows]
     if not found and not offers_mod.PROVIDERS:
         _flash(request, offers_mod.NO_PORTAL_NOTE, "warn")
         return _go("/")
     request.session[key] = now
-    offers_mod.store_offers(date.today(), profile["plz"], liter, found)
+    for q, rows in found_by_quality.items():
+        offers_mod.store_offers(date.today(), profile["plz"], liter, rows, q)
     if found:
-        _flash(request, f"{len(found)} Angebote für PLZ {profile['plz']}, {liter} L abgerufen.")
+        detail = ", ".join(f"{QUALITY_LABELS[q]} {len(rows)}" for q, rows in found_by_quality.items())
+        _flash(request, f"{len(found)} Angebote für PLZ {profile['plz']}, {liter} L abgerufen ({detail}).")
     else:
         _flash(request, "Abruf ohne Angebote: kein Portal hat Preise geliefert.", "warn")
     return _go("/")
@@ -825,8 +866,8 @@ def admin(request: Request, user=DEP_admin):
         ),
         digest_log=_digest_log(),
         portal_today=db.query(
-            "SELECT portal, COUNT(*) AS n FROM portal_offers WHERE date = ? GROUP BY portal "
-            "ORDER BY portal", (date.today().isoformat(),)),
+            "SELECT portal, quality, COUNT(*) AS n FROM portal_offers WHERE date = ? "
+            "GROUP BY portal, quality ORDER BY portal, quality", (date.today().isoformat(),)),
         portal_today_n=db.query_one(
             "SELECT COUNT(*) AS n FROM portal_offers WHERE date = ?",
             (date.today().isoformat(),))["n"],

@@ -20,6 +20,13 @@ PROFILE = {
 }
 
 
+@pytest.fixture(autouse=True)
+def no_offer_sleep(monkeypatch):
+    from heizoel.fetchers import offers as om
+
+    monkeypatch.setattr(om.time, "sleep", lambda s: None)
+
+
 @pytest.fixture()
 def stub_decision(monkeypatch):
     calls = []
@@ -323,11 +330,12 @@ def test_dashboard_shows_liter(client):
     assert "1.200 Liter (40 %)" in client.get("/history").text
 
 
-def _portal_row(dealer, ct, liter=1000):
+def _portal_row(dealer, ct, liter=1000, quality="normal"):
     db.execute(
         "INSERT INTO portal_offers (date, plz, liter, portal, dealer, ct_per_liter, total_eur, "
-        "delivery_days, url) VALUES (?, '80331', ?, 'testportal', ?, ?, ?, 5, 'https://example.org/o')",
-        (TODAY, liter, dealer, ct, ct * liter / 100),
+        "delivery_days, url, quality) "
+        "VALUES (?, '80331', ?, 'testportal', ?, ?, ?, 5, 'https://example.org/o', ?)",
+        (TODAY, liter, dealer, ct, ct * liter / 100, quality),
     )
 
 
@@ -358,17 +366,18 @@ def test_offers_refresh_and_rate_limit(client, monkeypatch):
     onboard(client)
     calls = []
 
-    def fake(plz, liter, client=None):
-        calls.append((plz, liter))
-        return [om.PortalOffer("t", "Händler", 99.0, 990.0, 3, "https://example.org", liter, plz)]
+    def fake(plz, liter, quality="normal", client=None):
+        calls.append((plz, liter, quality))
+        return [om.PortalOffer("t", "Händler", 99.0, 990.0, 3, "https://example.org", liter, plz,
+                               quality=quality)]
 
     monkeypatch.setattr(om, "fetch_offers", fake)
     r = client.post("/offers/refresh")
-    assert r.status_code == 303 and calls == [("80331", 1000)]
-    assert db.query_one("SELECT COUNT(*) AS n FROM portal_offers")["n"] == 1
-    assert "1 Angebote" in client.get("/").text
+    assert r.status_code == 303 and calls == [("80331", 1000, "normal"), ("80331", 1000, "premium")]
+    assert db.query_one("SELECT COUNT(*) AS n FROM portal_offers")["n"] == 2
+    assert "2 Angebote" in client.get("/").text
     client.post("/offers/refresh")
-    assert len(calls) == 1  # Rate-Limit
+    assert len(calls) == 2  # Rate-Limit
     assert "Zuletzt vor" in client.get("/").text
 
 
@@ -377,9 +386,10 @@ def _fake_fetch(monkeypatch):
 
     calls = []
 
-    def fake(plz, liter, client=None):
-        calls.append((plz, liter))
-        return [om.PortalOffer("t", "Händler", 99.0, 990.0, 3, "https://example.org", liter, plz)]
+    def fake(plz, liter, quality="normal", client=None):
+        calls.append((plz, liter, quality))
+        return [om.PortalOffer("t", "Händler", 99.0, 990.0, 3, "https://example.org", liter, plz,
+                               quality=quality)]
 
     monkeypatch.setattr(om, "fetch_offers", fake)
     return calls
@@ -390,17 +400,17 @@ def test_offers_refresh_custom_liter_auto_and_rate_limit_per_liter(client, monke
     onboard(client)
     calls = _fake_fetch(monkeypatch)
     assert client.post("/offers/refresh", data={"liter": "1500"}).status_code == 303
-    assert calls == [("80331", 1500)]
+    assert calls == [("80331", 1500, "normal"), ("80331", 1500, "premium")]
     assert db.query_one("SELECT offer_liter FROM profiles")["offer_liter"] == 1500
     html = client.get("/").text
     assert "Angebote für PLZ 80331, 1.500 Liter" in html and "zurück auf automatisch" in html
     client.post("/offers/refresh", data={"liter": "1500"})
-    assert len(calls) == 1  # gleiche Menge gedrosselt
+    assert len(calls) == 2  # gleiche Menge gedrosselt
     client.post("/offers/refresh", data={"liter": "2000"})
-    assert calls[-1] == ("80331", 2000)  # andere Menge nicht gedrosselt
+    assert calls[-1] == ("80331", 2000, "premium")  # andere Menge nicht gedrosselt
     client.post("/offers/refresh", data={"liter": "auto"})
     assert db.query_one("SELECT offer_liter FROM profiles")["offer_liter"] is None
-    assert calls[-1] == ("80331", 1000)
+    assert calls[-1] == ("80331", 1000, "premium")
 
 
 def test_offers_diff_uses_surcharge_of_chosen_liter(client):
@@ -588,3 +598,42 @@ def test_settings_threshold_select(client):
     html = client.get("/settings").text
     assert "Ab wann gilt für dich günstig?" in html
     assert "sehr günstig (unter den günstigsten 20 %)" in html
+
+
+def test_dashboard_quality_switch_and_premium_view(client):
+    register(client)
+    onboard(client)
+    make_rec()
+    _portal_row("Standard GmbH", 98.5, 2000)
+    _portal_row("Premium AG", 101.0, 2000, "premium")
+    html = client.get("/").text
+    assert 'href="/?quality=premium"' in html and 'href="/?quality=normal"' in html
+    assert "Standard GmbH" in html and "Premium AG" not in html
+    assert "Premium kostet hier zurzeit etwa 2,5 Cent je Liter mehr (50 € bei 2.000 Litern)" in html
+    assert "Was ist Premium-Heizöl?" in html
+    html = client.get("/?quality=premium").text
+    assert db.query_one("SELECT offer_quality FROM profiles")["offer_quality"] == "premium"
+    assert "Premium AG" in html and "Standard GmbH" not in html and "Alle 1 Angebote" in html
+    assert "Premium AG" in client.get("/").text  # gespeichert
+    assert "Standard GmbH" in client.get("/?quality=normal").text
+    assert "Standard GmbH" in client.get("/?quality=quatsch").text  # ungültig ignoriert
+
+
+def test_dashboard_premium_cheaper_and_missing_quality_hint(client):
+    register(client)
+    onboard(client)
+    make_rec()
+    _portal_row("Standard GmbH", 100.0, 2000)
+    html = client.get("/").text
+    assert "Premium-Angebote noch nicht geladen" in html
+    _portal_row("Premium AG", 98.0, 2000, "premium")
+    assert "2,0 Cent je Liter weniger (40 € bei 2.000 Litern)" in client.get("/").text
+
+
+def test_admin_portal_table_per_quality(client):
+    register(client)
+    onboard(client)
+    _portal_row("A", 100.0)
+    _portal_row("B", 110.0, quality="premium")
+    html = client.get("/admin").text
+    assert "Qualität" in html and "Premium" in html and "Standard" in html

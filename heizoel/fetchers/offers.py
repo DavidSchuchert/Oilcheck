@@ -27,7 +27,7 @@ einfacher GET genügt. robots.txt schließt diese Abfrage für Crawler aus; wir 
 höchstens einmal täglich pro PLZ/Menge ab, als Ersatz für den manuellen Browseraufruf des Nutzers.
 Bei Blockade (403/429) wirft der Provider ``PortalError`` und die App fällt auf Links zurück.
 HeizOel24 bleibt ausgeschlossen (AGB). Ein neuer Provider ist eine Funktion
-``fetch_<portal>(plz, liter, client=None) -> list[PortalOffer]``, die bei Strukturänderung
+``fetch_<portal>(plz, liter, quality, client=None) -> list[PortalOffer]``, die bei Strukturänderung
 ``PortalError`` wirft, und ein Eintrag in ``PROVIDERS``.
 """
 
@@ -53,6 +53,7 @@ USER_AGENT = (
 )
 TIMEOUT = 20.0
 PAUSE_SECONDS = 2.0
+QUALITIES = ("normal", "premium")
 MAX_OFFERS = 8
 NO_PORTAL_NOTE = (
     "Kein Portal abrufbar: HeizOel24 untersagt automatischen Zugriff in den AGB (§ 7)."
@@ -75,6 +76,7 @@ class PortalOffer:
     plz: str
     rating: float | None = None  # nur im Objekt, nicht in der DB
     rating_count: int | None = None
+    quality: str = "normal"  # "normal" | "premium"
 
 
 Provider = Callable[..., list[PortalOffer]]
@@ -85,8 +87,10 @@ def make_client() -> httpx.Client:
     return httpx.Client(timeout=TIMEOUT, headers={"User-Agent": USER_AGENT}, follow_redirects=True)
 
 
-def fetch_offers(plz: str, liter: int, client: httpx.Client | None = None) -> list[PortalOffer]:
-    """Alle verfügbaren Portale nacheinander abfragen; Fehler je Portal loggen."""
+def fetch_offers(
+    plz: str, liter: int, quality: str = "normal", client: httpx.Client | None = None
+) -> list[PortalOffer]:
+    """Alle verfügbaren Portale für eine Qualität nacheinander abfragen; Fehler je Portal loggen."""
     out: list[PortalOffer] = []
     own = client is None and bool(PROVIDERS)
     c = client or (make_client() if own else None)
@@ -95,7 +99,7 @@ def fetch_offers(plz: str, liter: int, client: httpx.Client | None = None) -> li
             if i:
                 time.sleep(PAUSE_SECONDS)
             try:
-                out.extend(fn(plz, liter, c))
+                out.extend(fn(plz, liter, quality, c))
             except (PortalError, httpx.HTTPError) as exc:
                 log.warning("Portal %s fehlgeschlagen: %s", name, exc)
     finally:
@@ -135,58 +139,69 @@ def _targets() -> list[tuple[str, int]]:
     return list(seen)
 
 
-def store_offers(today: date, plz: str, liter: int, offers: list[PortalOffer]) -> None:
+def store_offers(
+    today: date, plz: str, liter: int, offers: list[PortalOffer], quality: str = "normal"
+) -> None:
     with db.transaction() as conn:
         conn.execute(
-            "DELETE FROM portal_offers WHERE date = ? AND plz = ? AND liter = ?",
-            (today.isoformat(), plz, liter),
+            "DELETE FROM portal_offers WHERE date = ? AND plz = ? AND liter = ? AND quality = ?",
+            (today.isoformat(), plz, liter, quality),
         )
         conn.executemany(
             "INSERT INTO portal_offers (date, plz, liter, portal, dealer, ct_per_liter, "
-            "total_eur, delivery_days, url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "total_eur, delivery_days, url, quality) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [(today.isoformat(), plz, liter, o.portal, o.dealer, o.ct_per_liter, o.total_eur,
-              o.delivery_days, o.url) for o in offers],
+              o.delivery_days, o.url, quality) for o in offers],
         )
 
 
 def refresh_offers(today: date) -> dict:
-    """Jede (PLZ, Menge) aus den Profilen genau einmal abrufen und speichern."""
+    """Jede (PLZ, Menge) aus den Profilen einmal je Qualität abrufen und speichern."""
     queries = offers_n = 0
     errors: list[str] = []
+    by_quality = {q: 0 for q in QUALITIES}
     if not PROVIDERS:
-        return {"queries": 0, "offers": 0, "errors": [NO_PORTAL_NOTE]}
-    for i, (plz, liter) in enumerate(_targets()):
-        if i:
-            time.sleep(PAUSE_SECONDS)
-        queries += 1
-        try:
-            found = fetch_offers(plz, liter)
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"{plz}/{liter} L: {exc}")
-            continue
-        store_offers(today, plz, liter, found)
-        offers_n += len(found)
-    return {"queries": queries, "offers": offers_n, "errors": errors}
+        return {"queries": 0, "offers": 0, "errors": [NO_PORTAL_NOTE], "by_quality": by_quality}
+    first = True
+    for plz, liter in _targets():
+        for quality in QUALITIES:
+            if not first:
+                time.sleep(PAUSE_SECONDS)
+            first = False
+            queries += 1
+            try:
+                found = fetch_offers(plz, liter, quality)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{plz}/{liter} L/{quality}: {exc}")
+                continue
+            store_offers(today, plz, liter, found, quality)
+            offers_n += len(found)
+            by_quality[quality] += len(found)
+    return {"queries": queries, "offers": offers_n, "errors": errors, "by_quality": by_quality}
 
 
-def load_offers(plz: str, liter: int, max_age_days: int = 2) -> list[sqlite3.Row]:
-    """Jüngster Tag für die PLZ; gleiche Menge bevorzugt, sonst die nächstgrößere am selben Tag."""
+def load_offers(
+    plz: str, liter: int, quality: str = "normal", max_age_days: int = 2
+) -> list[sqlite3.Row]:
+    """Jüngster Tag für PLZ und Qualität; gleiche Menge bevorzugt, sonst die nächstgrößere am selben Tag."""
     since = (date.today() - timedelta(days=max_age_days)).isoformat()
     day = db.query_one(
-        "SELECT MAX(date) AS d FROM portal_offers WHERE plz = ? AND date >= ?", (plz, since)
+        "SELECT MAX(date) AS d FROM portal_offers WHERE plz = ? AND quality = ? AND date >= ?",
+        (plz, quality, since),
     )
     if day is None or day["d"] is None:
         return []
     lit = db.query_one(
-        "SELECT MIN(liter) AS l FROM portal_offers WHERE plz = ? AND date = ? AND liter >= ?",
-        (plz, day["d"], liter),
+        "SELECT MIN(liter) AS l FROM portal_offers "
+        "WHERE plz = ? AND quality = ? AND date = ? AND liter >= ?",
+        (plz, quality, day["d"], liter),
     )
     if lit is None or lit["l"] is None:
         return []
     return db.query(
-        "SELECT * FROM portal_offers WHERE plz = ? AND date = ? AND liter = ? "
+        "SELECT * FROM portal_offers WHERE plz = ? AND quality = ? AND date = ? AND liter = ? "
         "ORDER BY ct_per_liter, id",
-        (plz, day["d"], lit["l"]),
+        (plz, quality, day["d"], lit["l"]),
     )
 
 

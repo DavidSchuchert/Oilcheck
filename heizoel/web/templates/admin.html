@@ -63,8 +63,8 @@
     <p class="text-sm mb-2">{{ portal_today_n }} Zeilen heute. Aktive Portale: {{ portal_names|join(", ") or "keine" }}.</p>
     {% if not portal_names %}<p class="text-xs text-slate-500 mb-2">{{ no_portal_note }}</p>{% endif %}
     <table class="w-full text-xs mb-3">
-      <thead><tr class="text-left text-slate-500"><th>Portal</th><th>Zeilen heute</th></tr></thead>
-      <tbody>{% for p in portal_today %}<tr class="border-t border-slate-100"><td>{{ p.portal }}</td><td>{{ p.n }}</td></tr>{% else %}<tr><td colspan="2" class="text-slate-500 py-1">Keine Zeilen.</td></tr>{% endfor %}</tbody>
+      <thead><tr class="text-left text-slate-500"><th>Portal</th><th>Qualität</th><th>Zeilen heute</th></tr></thead>
+      <tbody>{% for p in portal_today %}<tr class="border-t border-slate-100"><td>{{ p.portal }}</td><td>{{ "Premium" if p.quality == "premium" else "Standard" }}</td><td>{{ p.n }}</td></tr>{% else %}<tr><td colspan="3" class="text-slate-500 py-1">Keine Zeilen.</td></tr>{% endfor %}</tbody>
     </table>
     <form method="post" action="/admin/offers/refresh" class="mb-3">{{ btn("Portal-Angebote jetzt abrufen") }}</form>
     <h3 class="font-medium text-sm mb-1">Letzte Läufe (job portal_offers)</h3>
