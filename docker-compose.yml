@@ -1,0 +1,18 @@
+services:
+  oilcheck:
+    build: .
+    image: oilcheck:latest
+    container_name: oilcheck
+    restart: unless-stopped
+    ports:
+      - "8090:8000"
+    env_file:
+      - .env
+    environment:
+      HEIZOEL_DB_PATH: /data/heizoel.db
+      # Ollama läuft als eigener Container auf dem Host (Port 11434)
+      HEIZOEL_OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/data

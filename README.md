@@ -49,6 +49,20 @@ Tests:
 uv run pytest
 ```
 
+## Betrieb per Docker (server.local)
+
+```bash
+cd /opt/oilcheck && git pull
+cp -n .env.example .env            # einmalig, Werte setzen (Secret, Einladungscode, EIA-Key, LLM)
+docker compose up -d --build       # App auf Port 8090, Datenbank in ./data, Scheduler läuft mit
+docker compose exec oilcheck heizoel init
+docker compose exec oilcheck heizoel create-user --email ... --name ... --admin
+docker compose logs -f oilcheck
+```
+
+Ollama läuft als eigener Container auf dem Host; die App erreicht ihn über `host.docker.internal:11434`
+(in `docker-compose.yml` gesetzt). Backup = `data/heizoel.db` kopieren.
+
 ## Aufbau
 
 ```
