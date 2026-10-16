@@ -225,6 +225,6 @@ Ergebnis: Für dich und 2–3 Testnutzer nutzbar, ohne regionale Genauigkeit.
 Offen zu entscheiden:
 
 1. Projektordner und Repo-Name.
-2. Hosting: eigener Server, Hetzner-VPS, oder lokal auf dem Mac mit Zugriff per Tailscale.
-3. Erster Benachrichtigungskanal: Mail (einfach) oder gleich Telegram.
-4. Welche API-Stufe für den Start.
+2. Hosting: entschieden, läuft als Docker-Container auf server.local:8090 (seit 16.10.2026), Tailscale ist auf dem Server vorhanden.
+3. Benachrichtigung: keine, alles im Dashboard (Entscheidung 16.10.2026).
+4. Modell: lokal Ollama qwen2.5:7b, Obergrenze 7B (Entscheidung 16.10.2026).
