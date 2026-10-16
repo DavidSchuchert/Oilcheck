@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Heizöl-Kaufberater{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+{% set current_path = request.url.path if request is defined else "" %}
+{% macro navlink(href, label, exact=False) -%}
+  {%- set active = (current_path == href) if exact else (current_path == href or current_path.startswith(href ~ "/")) -%}
+  <a href="{{ href }}"
+     class="whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition
+            {% if active %}bg-slate-900 text-white{% else %}text-slate-600 hover:bg-slate-100 hover:text-slate-900{% endif %}"
+     {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
+{%- endmacro %}
+{% macro navlinks() -%}
+  {{ navlink("/", "Start", exact=True) }}
+  {{ navlink("/history", "Meine Käufe") }}
+  {{ navlink("/settings", "Einstellungen") }}
+  {% if user["role"] == "admin" %}{{ navlink("/admin", "Admin") }}{% endif %}
+{%- endmacro %}
+<header class="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200">
+  <div class="max-w-5xl mx-auto px-4">
+    <div class="flex h-14 items-center justify-between gap-4">
+      <a href="/" class="flex items-center gap-2 font-semibold text-slate-800">
+        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-sm font-bold text-white" aria-hidden="true">Öl</span>
+        <span class="hidden sm:inline">Heizöl-Kaufberater</span>
+        <span class="sm:hidden">Heizöl</span>
+      </a>
+      {% if user %}
+      <nav class="hidden md:flex items-center gap-1" aria-label="Hauptnavigation">
+        {{ navlinks() }}
+      </nav>
+      <div class="flex items-center gap-3 text-sm text-slate-600">
+        <span class="hidden sm:inline truncate max-w-[10rem]" title="{{ user['name'] }}">{{ user["name"] }}</span>
+        <form method="post" action="/logout">
+          <button class="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-100" type="submit">Abmelden</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% if user %}
+    <nav class="md:hidden -mx-1 flex gap-1 overflow-x-auto pb-2" aria-label="Hauptnavigation">
+      {{ navlinks() }}
+    </nav>
+    {% endif %}
+  </div>
+</header>
+<main class="max-w-5xl mx-auto px-4 py-6">
+  {% if flash %}
+  <div class="mb-4 rounded-md px-4 py-2 text-sm
+    {% if flash.kind == 'error' %}bg-red-100 text-red-800{% elif flash.kind == 'warn' %}bg-amber-100 text-amber-900{% else %}bg-green-100 text-green-800{% endif %}">
+    {{ flash.msg }}
+  </div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

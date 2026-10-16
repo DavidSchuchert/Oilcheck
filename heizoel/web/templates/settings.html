@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, btn %}
+{% block title %}Einstellungen{% endblock %}
+{% block content %}
+<div class="max-w-xl mx-auto space-y-6">
+  <section class="bg-white rounded-lg shadow-sm p-6">
+    <h1 class="text-xl font-semibold mb-4">Einstellungen</h1>
+    {% if error %}<p class="mb-3 text-sm text-red-700">{{ error }}</p>{% endif %}
+    <form method="post" action="/settings" class="grid sm:grid-cols-2 gap-4">
+      {{ field("Postleitzahl", "plz", p.plz, "text", 'required pattern="\\d{5}" maxlength=5') }}
+      {{ field("Wie groß ist dein Tank? (Liter)", "tank_liter", p.tank_liter, "number", "required min=100") }}
+      {{ field("Verbrauch im Jahr (Liter)", "annual", p.annual_consumption_liter, "number", "required min=100", "Steht auf alten Rechnungen, sonst Wohnfläche × 15 Liter.") }}
+      {{ field("Kleinste Menge, die du bestellen kannst (Liter)", "min_order", p.min_order_liter, "number", "required min=100") }}
+      {{ field("Wie viele Tage dauert die Lieferung?", "lead_days", p.lead_days, "number", "required min=0") }}
+      <label class="block text-sm">
+        <span class="text-slate-700">Benachrichtigung</span>
+        <select name="notify" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2">
+          <option value="mail" {% if p.notify_channel == "mail" %}selected{% endif %}>Per E-Mail</option>
+          <option value="none" {% if p.notify_channel == "none" %}selected{% endif %}>Keine</option>
+        </select>
+      </label>
+      <label class="block text-sm sm:col-span-2">
+        <span class="text-slate-700">Ab wann gilt für dich günstig?</span>
+        <select name="threshold_percentile" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2">
+          {% set opts = [(20, "sehr günstig (unter den günstigsten 20 %)"), (30, "günstig (30 %)"), (40, "normal (40 %)"), (50, "mir egal, Hauptsache rechtzeitig (50 %)")] %}
+          {% for v, label in opts %}<option value="{{ v }}" {% if p.threshold_percentile == v %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          {% if p.threshold_percentile not in [20, 30, 40, 50] %}<option value="{{ p.threshold_percentile }}" selected>eigener Wert ({{ p.threshold_percentile }} %)</option>{% endif %}
+        </select>
+        <span class="text-xs text-slate-500">Je niedriger, desto wählerischer: nur sehr gute Preise führen zu "Ja, jetzt kaufen".</span>
+      </label>
+      <div class="sm:col-span-2">{{ btn("Speichern") }}</div>
+    </form>
+  </section>
+
+  <section class="bg-white rounded-lg shadow-sm p-6">
+    <h2 class="font-semibold mb-3">Passwort ändern</h2>
+    <form method="post" action="/settings/password" class="space-y-3">
+      {{ field("Aktuelles Passwort", "current", "", "password", "required") }}
+      {{ field("Neues Passwort", "new", "", "password", "required minlength=8") }}
+      {{ btn("Passwort ändern") }}
+    </form>
+  </section>
+
+  <section class="bg-white rounded-lg shadow-sm p-6 border border-red-200">
+    <h2 class="font-semibold mb-1 text-red-800">Konto löschen</h2>
+    <p class="text-sm text-slate-600 mb-3">Löscht dein Konto mit Profil, Füllständen, Angeboten, Käufen und Empfehlungen endgültig.</p>
+    <form method="post" action="/settings/delete" class="space-y-3" onsubmit="return confirm('Konto wirklich endgültig löschen?')">
+      {{ field("Passwort zur Bestätigung", "password", "", "password", "required") }}
+      {{ btn("Konto löschen", "bg-red-700 text-white") }}
+    </form>
+  </section>
+</div>
+{% endblock %}

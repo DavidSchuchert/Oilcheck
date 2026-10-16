@@ -1,0 +1,3 @@
+date,ct_per_liter
+# Hier eigene TECSON-Monatswerte eintragen (ISO-Datum, z. B. 2021-03-01), Preis in ct/L brutto bei 3000 L.
+# Dezimalpunkt oder -komma erlaubt. Zeilen mit # werden ignoriert. Keine geschaetzten Werte eintragen.

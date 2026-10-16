@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "_macros.html" import btn %}
+{% block title %}Deine Käufe{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-6">
+  <section class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h1 class="font-semibold mb-3">Deine Käufe</h1>
+    {% if rows %}
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-slate-500"><th class="py-1 pr-3">Datum</th><th class="pr-3">Liter</th><th class="pr-3">Preis je 100 L</th><th>Im Vergleich zum Tagespreis</th></tr></thead>
+      <tbody>
+      {% for p in rows %}
+        <tr class="border-t border-slate-100">
+          <td class="py-1 pr-3">{{ p.date|datum_lang }}</td>
+          <td class="pr-3">{{ p.liter|liter }}</td>
+          <td class="pr-3">{{ p.ct|eur100 }}</td>
+          <td>{% if p.delta_ct is none %}–{% elif p.delta_ct < -0.005 %}{{ (p.delta_ct|abs)|eur100 }} je 100 L günstiger{% elif p.delta_ct > 0.005 %}{{ p.delta_ct|eur100 }} je 100 L teurer{% else %}etwa gleich{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="mt-3 text-sm font-medium">Insgesamt {{ totals.liter|liter }} Liter für {{ totals.eur|eur }}.</p>
+    {% if totals.delta_eur is not none %}
+    <p class="text-sm text-slate-700">
+      {% if totals.delta_eur < -0.5 %}Verglichen mit dem Tagespreis hast du {{ (totals.delta_eur|abs)|eur }} gespart.
+      {% elif totals.delta_eur > 0.5 %}Verglichen mit dem Tagespreis hast du {{ totals.delta_eur|eur }} mehr bezahlt.
+      {% else %}Verglichen mit dem Tagespreis hast du weder gespart noch draufgezahlt.{% endif %}
+    </p>
+    {% endif %}
+    {% else %}<p class="text-sm text-slate-500">Noch keine Käufe eingetragen.</p>{% endif %}
+  </section>
+
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <h2 class="font-semibold mb-2">Was hätte die Regel gebracht?</h2>
+    {% if backtest %}
+    <p class="text-sm text-slate-700">{{ backtest.text }}</p>
+    {% else %}
+    <p class="text-sm text-slate-500">Dafür brauchen wir mehr Preisdaten.</p>
+    {% endif %}
+  </section>
+
+  {% if fills %}
+  <section class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h2 class="font-semibold mb-3">Deine Füllstände</h2>
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-slate-500"><th class="py-1 pr-3">Datum</th><th class="pr-3">Im Tank</th><th>Eingetragen</th></tr></thead>
+      <tbody>
+      {% for f in fills %}
+        <tr class="border-t border-slate-100">
+          <td class="py-1 pr-3">{{ f.date|datum_lang }}</td>
+          <td class="pr-3">{{ (f.fill_percent / 100 * tank_liter)|liter }} Liter ({{ "%.0f"|format(f.fill_percent) }} %)</td>
+          <td>{{ {"manual": "von dir", "purchase": "nach einem Kauf", "onboarding": "beim Start"}.get(f.source, f.source) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <section class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h2 class="font-semibold mb-3">Frühere Einschätzungen</h2>
+    {% if recs %}
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-slate-500"><th class="py-1 pr-3">Datum</th><th class="pr-3">Antwort</th><th>Preis je 100 L</th></tr></thead>
+      <tbody>
+      {% for r in recs %}
+        <tr class="border-t border-slate-100">
+          <td class="py-1 pr-3">{{ r.date|datum_lang }}</td>
+          <td class="pr-3">{{ r.verdict|antwort }}</td>
+          <td>{{ r.personal_ct|eur100 }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="text-sm text-slate-500">Noch keine Einschätzungen.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

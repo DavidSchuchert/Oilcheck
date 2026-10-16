@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, btn %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+<div class="space-y-6">
+  <section class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h1 class="font-semibold mb-3">Datenstatus</h1>
+    <p class="text-sm mb-2">{{ price_count }} Referenzpreise gesamt.</p>
+    <p class="text-sm mb-2">LLM-Treiber: {{ llm_driver }}, Modell: {{ llm_model }}</p>
+    <table class="w-full text-sm mb-3">
+      <thead><tr class="text-left text-slate-500"><th>Quelle</th><th>Jüngster Tag</th><th>ct/L</th></tr></thead>
+      <tbody>{% for s in sources %}<tr class="border-t border-slate-100"><td>{{ s.source }}</td><td>{{ s.date }}</td><td>{{ "%.1f"|format(s.ct_per_liter) }}</td></tr>{% endfor %}</tbody>
+    </table>
+    <div class="flex flex-wrap gap-3 mb-4">
+      <form method="post" action="/admin/fetch">{{ btn("Preis jetzt holen") }}</form>
+      <form method="post" action="/admin/recompute-all">{{ btn("Alle Empfehlungen neu berechnen") }}</form>
+    </div>
+    <p class="text-xs text-slate-500 mb-2">Alte TECSON-Werte (z. B. aus dem Chart abgelesen, 3000 L, brutto) hier mit Datum eintragen. Jeder Wert dient als Anker für die Marge, mit der die Historie zurückgerechnet wird. Je mehr Anker über die Jahre verteilt, desto besser die Perzentile. Danach <code>heizoel backfill</code> ausführen.</p>
+    <form method="post" action="/admin/manual-price" class="flex flex-wrap gap-2 items-end mb-4">
+      <label class="text-xs">Datum<input class="block rounded-md border border-slate-300 px-2 py-1 text-sm" type="date" name="date" value="{{ today }}"></label>
+      <label class="text-xs">ct/L<input class="block w-24 rounded-md border border-slate-300 px-2 py-1 text-sm" type="number" step="0.01" name="ct" required></label>
+      {{ btn("Manuellen Preis speichern") }}
+    </form>
+    <h2 class="font-medium text-sm mb-1">Letzte Jobs</h2>
+    <table class="w-full text-xs">
+      <thead><tr class="text-left text-slate-500"><th>Job</th><th>Start</th><th>Ende</th><th>OK</th><th>Meldung</th></tr></thead>
+      <tbody>{% for j in jobs %}<tr class="border-t border-slate-100"><td>{{ j.job }}</td><td>{{ j.started_at }}</td><td>{{ j.finished_at or "–" }}</td><td>{{ "ja" if j.ok else ("nein" if j.ok == 0 else "–") }}</td><td>{{ j.message or "" }}</td></tr>{% else %}<tr><td colspan="5" class="text-slate-500 py-1">Keine Läufe.</td></tr>{% endfor %}</tbody>
+    </table>
+  </section>
+
+  <section class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h2 class="font-semibold mb-3">CO2-Stufen</h2>
+    <table class="w-full text-sm mb-4">
+      <thead><tr class="text-left text-slate-500"><th>Ab</th><th>EUR/t</th><th>max</th><th>Status</th><th>Notiz</th><th></th></tr></thead>
+      <tbody>{% for s in steps %}<tr class="border-t border-slate-100">
+        <td>{{ s.valid_from }}</td><td>{{ s.eur_per_t }}</td><td>{{ s.eur_per_t_max if s.eur_per_t_max is not none else "–" }}</td><td>{{ s.status }}</td><td class="text-xs">{{ s.note or "" }}</td>
+        <td><form method="post" action="/admin/co2/delete" onsubmit="return confirm('Stufe löschen?')"><input type="hidden" name="valid_from" value="{{ s.valid_from }}"><button class="text-red-700 text-xs underline" type="submit">Löschen</button></form></td>
+      </tr>{% endfor %}</tbody>
+    </table>
+    <form method="post" action="/admin/co2" class="grid sm:grid-cols-3 gap-2 text-xs">
+      <label>Gültig ab<input class="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm" type="date" name="valid_from" required></label>
+      <label>EUR/t<input class="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm" type="number" step="0.01" name="eur_per_t" required></label>
+      <label>EUR/t max (optional)<input class="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm" type="number" step="0.01" name="eur_per_t_max"></label>
+      <label>Status<select name="status" class="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm"><option>fixed</option><option>draft</option><option>market</option></select></label>
+      <label>Notiz<input class="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm" name="note"></label>
+      <label>Quelle (URL)<input class="block w-full rounded-md border border-slate-300 px-2 py-1 text-sm" name="source_url"></label>
+      <div class="sm:col-span-3">{{ btn("Stufe speichern (Anlegen oder Ändern)") }}</div>
+    </form>
+  </section>
+
+  <section class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h2 class="font-semibold mb-3">Lagebild</h2>
+    <form method="post" action="/admin/digest" class="mb-3">{{ btn("Lagebild jetzt erzeugen") }}</form>
+    <h3 class="font-medium text-sm mb-1">Modell-Log</h3>
+    <table class="w-full text-xs">
+      <thead><tr class="text-left text-slate-500"><th>Datum</th><th>Modell</th><th>Tokens rein</th><th>Tokens raus</th><th>Dauer ms</th><th>Items</th><th>Lage</th></tr></thead>
+      <tbody>{% for d in digest_log %}<tr class="border-t border-slate-100"><td>{{ d.date }}</td><td>{{ d.model or "–" }}</td><td>{{ d.tokens_in if d.tokens_in is not none else "–" }}</td><td>{{ d.tokens_out if d.tokens_out is not none else "–" }}</td><td>{{ d.duration_ms if d.duration_ms is not none else "–" }}</td><td>{{ d.n_items }}</td><td>{{ d.short }}</td></tr>{% else %}<tr><td colspan="7" class="text-slate-500 py-1">Noch keine Lagebilder.</td></tr>{% endfor %}</tbody>
+    </table>
+  </section>
+
+  <section class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h2 class="font-semibold mb-3">Portal-Angebote</h2>
+    <p class="text-sm mb-2">{{ portal_today_n }} Zeilen heute. Aktive Portale: {{ portal_names|join(", ") or "keine" }}.</p>
+    {% if not portal_names %}<p class="text-xs text-slate-500 mb-2">{{ no_portal_note }}</p>{% endif %}
+    <table class="w-full text-xs mb-3">
+      <thead><tr class="text-left text-slate-500"><th>Portal</th><th>Zeilen heute</th></tr></thead>
+      <tbody>{% for p in portal_today %}<tr class="border-t border-slate-100"><td>{{ p.portal }}</td><td>{{ p.n }}</td></tr>{% else %}<tr><td colspan="2" class="text-slate-500 py-1">Keine Zeilen.</td></tr>{% endfor %}</tbody>
+    </table>
+    <form method="post" action="/admin/offers/refresh" class="mb-3">{{ btn("Portal-Angebote jetzt abrufen") }}</form>
+    <h3 class="font-medium text-sm mb-1">Letzte Läufe (job portal_offers)</h3>
+    <table class="w-full text-xs">
+      <thead><tr class="text-left text-slate-500"><th>Start</th><th>OK</th><th>Meldung</th></tr></thead>
+      <tbody>{% for j in portal_jobs %}<tr class="border-t border-slate-100"><td>{{ j.started_at }}</td><td>{{ "ja" if j.ok else ("nein" if j.ok == 0 else "–") }}</td><td>{{ j.message or "" }}</td></tr>{% else %}<tr><td colspan="3" class="text-slate-500 py-1">Keine Läufe.</td></tr>{% endfor %}</tbody>
+    </table>
+  </section>
+
+  <section id="hinweise" class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h2 class="font-semibold mb-3">Hinweise auf Regeländerungen</h2>
+    <table class="w-full text-xs">
+      <thead><tr class="text-left text-slate-500"><th>Datum</th><th>Titel</th><th>Zitat</th><th>Status</th><th>Aktionen</th></tr></thead>
+      <tbody>{% for h in hints %}<tr class="border-t border-slate-100 align-top">
+        <td>{{ h.date }}</td>
+        <td>{% if h.url %}<a class="underline text-blue-700" href="{{ h.url }}" target="_blank" rel="noopener">{{ h.title }}</a>{% else %}{{ h.title }}{% endif %}</td>
+        <td>{{ h.quote }}</td><td>{{ h.status }}</td>
+        <td class="whitespace-nowrap">
+          {% if h.status != "confirmed" %}<form method="post" action="/admin/hints/{{ h.id }}/confirm" class="inline"><button class="text-green-700 underline" type="submit">Bestätigen</button></form>{% endif %}
+          {% if h.status != "dismissed" %}<form method="post" action="/admin/hints/{{ h.id }}/dismiss" class="inline ml-2"><button class="text-red-700 underline" type="submit">Verwerfen</button></form>{% endif %}
+        </td>
+      </tr>{% else %}<tr><td colspan="5" class="text-slate-500 py-1">Keine Hinweise.</td></tr>{% endfor %}</tbody>
+    </table>
+  </section>
+
+  <section class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h2 class="font-semibold mb-3">Nachrichtenquellen</h2>
+    <p class="text-sm mb-2">{{ news_total }} Meldungen gesamt, {{ news_last7 }} in den letzten 7 Tagen.</p>
+    <table class="w-full text-xs">
+      <thead><tr class="text-left text-slate-500"><th>Feed</th><th>Gesamt</th><th>Letzte 7 Tage</th></tr></thead>
+      <tbody>{% for f in news_feeds %}<tr class="border-t border-slate-100"><td>{{ f.feed }}</td><td>{{ f.total }}</td><td>{{ f.last7 }}</td></tr>{% else %}<tr><td colspan="3" class="text-slate-500 py-1">Keine Meldungen.</td></tr>{% endfor %}</tbody>
+    </table>
+  </section>
+
+  <section class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h2 class="font-semibold mb-3">Regionen</h2>
+    <div class="grid sm:grid-cols-2 gap-4 text-sm">
+      <div>
+        <h3 class="font-medium mb-1">Offsets (jüngster Stand)</h3>
+        <table class="w-full"><thead><tr class="text-left text-slate-500"><th>Region</th><th>Datum</th><th>Offset ct</th><th>n</th></tr></thead>
+        <tbody>{% for o in offsets %}<tr class="border-t border-slate-100"><td>{{ o.region }}</td><td>{{ o.date }}</td><td>{{ "%+.2f"|format(o.offset_ct) }}</td><td>{{ o.n_offers }}</td></tr>{% else %}<tr><td colspan="4" class="text-slate-500">Keine Offsets.</td></tr>{% endfor %}</tbody></table>
+      </div>
+      <div>
+        <h3 class="font-medium mb-1">Angebote je Region</h3>
+        <table class="w-full"><thead><tr class="text-left text-slate-500"><th>Region</th><th>Angebote</th><th>Ausreißer</th></tr></thead>
+        <tbody>{% for o in offer_stats %}<tr class="border-t border-slate-100"><td>{{ o.region }}</td><td>{{ o.n }}</td><td>{{ o.outliers }}</td></tr>{% else %}<tr><td colspan="3" class="text-slate-500">Keine Angebote.</td></tr>{% endfor %}</tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <section class="bg-white rounded-lg shadow-sm p-4 overflow-x-auto">
+    <h2 class="font-semibold mb-3">Nutzer</h2>
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-slate-500"><th>ID</th><th>Name</th><th>E-Mail</th><th>Rolle</th><th>PLZ</th><th>Letzte Empfehlung</th></tr></thead>
+      <tbody>{% for u in users %}<tr class="border-t border-slate-100"><td>{{ u.id }}</td><td>{{ u.name }}</td><td>{{ u.email }}</td><td>{{ u.role }}</td><td>{{ u.plz or "–" }}</td><td>{{ u.last_rec or "–" }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, btn %}
+{% block title %}Anmelden{% endblock %}
+{% block content %}
+<div class="max-w-sm mx-auto bg-white rounded-lg shadow-sm p-6">
+  <h1 class="text-xl font-semibold mb-4">Anmelden</h1>
+  {% if error %}<p class="mb-3 text-sm text-red-700">{{ error }}</p>{% endif %}
+  <form method="post" action="/login" class="space-y-3">
+    {{ field("E-Mail", "email", form.email, "email", "required autofocus") }}
+    {{ field("Passwort", "password", "", "password", "required") }}
+    {{ btn("Anmelden") }}
+  </form>
+  <p class="mt-4 text-sm text-slate-600">Noch kein Konto? <a class="underline" href="/register">Registrieren</a></p>
+</div>
+{% endblock %}

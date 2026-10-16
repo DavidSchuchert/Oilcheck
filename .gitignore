@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+.env
+dist/
+data/TESTNUTZER.md

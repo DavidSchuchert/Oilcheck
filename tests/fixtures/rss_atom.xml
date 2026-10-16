@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Atom</title>
+  <entry>
+    <title>CO2-Preis steigt 2027</title>
+    <link rel="self" href="https://example.org/self"/>
+    <link rel="alternate" href="https://example.org/c"/>
+    <updated>2026-10-15T12:00:00Z</updated>
+    <summary>&lt;div&gt;BEHG: Neue Stufe.&lt;/div&gt;</summary>
+  </entry>
+</feed>

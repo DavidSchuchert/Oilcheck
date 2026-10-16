@@ -1,0 +1,11 @@
+{% macro field(label, name, value="", type="text", attrs="", hint="") -%}
+<label class="block text-sm">
+  <span class="text-slate-700">{{ label }}</span>
+  <input class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" type="{{ type }}" name="{{ name }}" value="{{ value if value is not none else '' }}" {{ attrs|safe }}>
+  {% if hint %}<span class="text-xs text-slate-500">{{ hint }}</span>{% endif %}
+</label>
+{%- endmacro %}
+{% macro btn(label, cls="bg-slate-800 text-white") -%}
+<button type="submit" class="rounded-md px-4 py-2 text-sm font-medium {{ cls }}">{{ label }}</button>
+{%- endmacro %}
+{% macro signed(v, digits=1) -%}{% if v is none %}–{% else %}{{ "%+.*f"|format(digits, v) }}{% endif %}{%- endmacro %}

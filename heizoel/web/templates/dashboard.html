@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% from "_macros.html" import btn %}
+{% block title %}Heizöl: Soll ich kaufen?{% endblock %}
+{% block content %}
+{% set colors = {"buy_now": "bg-green-600 text-white", "buy_before_step": "bg-amber-400 text-slate-900", "watch": "bg-blue-600 text-white", "wait": "bg-slate-500 text-white"} %}
+{% set inp = "block w-full rounded-md border border-slate-300 px-3 py-2 text-base" %}
+<div class="max-w-2xl mx-auto space-y-4">
+
+  {# 1. Die Antwort #}
+  <section class="rounded-lg p-6 {% if rec %}{{ colors.get(rec.verdict, 'bg-slate-500 text-white') }}{% else %}bg-white shadow-sm{% endif %}">
+    {% if rec %}
+      <p class="text-sm opacity-90">Soll ich jetzt Heizöl kaufen?</p>
+      <div class="text-3xl font-bold mt-1">{{ answer.title }}</div>
+      {% for sentence in answer.sentences %}<p class="mt-2">{{ sentence }}</p>{% endfor %}
+      {% if answer.tip %}<p class="mt-2 font-medium">{{ answer.tip }}</p>{% endif %}
+      <details class="mt-3 text-sm">
+        <summary class="cursor-pointer underline opacity-90">Warum?</summary>
+        <ul class="mt-2 space-y-1 list-disc ml-5">
+          {% for line in answer.why %}<li>{{ line }}</li>{% endfor %}
+        </ul>
+        <p class="mt-2 text-xs {% if rec.verdict == 'buy_before_step' %}text-slate-700{% else %}text-slate-300{% endif %}">{{ answer.reason }}</p>
+      </details>
+      <p class="mt-3 text-xs opacity-75">Stand: {{ rec.date|datum_lang }}</p>
+    {% else %}
+      <p class="text-sm text-slate-500">Soll ich jetzt Heizöl kaufen?</p>
+      <p class="font-medium">Noch keine Empfehlung vorhanden.</p>
+      <p class="text-sm text-slate-600 mt-1">Sobald Preisdaten vorliegen, kann die Einschätzung berechnet werden.</p>
+      <form method="post" action="/recompute" class="mt-3">{{ btn("Jetzt berechnen") }}</form>
+    {% endif %}
+  </section>
+
+  {# 2. Günstigstes Angebot #}
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <h2 class="font-semibold">Dein günstigstes Angebot heute</h2>
+    <p class="text-xs text-slate-500 mb-3">Angebote für PLZ {{ profile.plz }}, {{ offer_liter|liter }} Liter{% if portal_offers %} · Stand {{ offers_info.stand }}{% endif %}</p>
+    {% if portal_offers %}
+      {% set best = portal_offers[0] %}
+      <div class="rounded-lg border border-green-300 bg-green-50 p-4">
+        <div class="text-lg font-bold">{{ best.dealer or best.portal }}</div>
+        <div class="text-2xl font-bold mt-1">{{ best.ct_per_liter|eur100 }} je 100 Liter</div>
+        <div class="text-sm text-slate-700 mt-1">
+          {{ (best.total_eur if best.total_eur is not none else best.ct_per_liter * best.liter / 100)|eur }} für {{ best.liter|liter }} Liter
+          {% if best.delivery_days is not none %}<br>Lieferung in etwa {{ best.delivery_days }} {{ "Tag" if best.delivery_days == 1 else "Tagen" }}{% endif %}
+        </div>
+        {% if best.url %}<a class="mt-3 inline-block rounded-md bg-green-700 text-white px-4 py-2 text-sm font-medium" href="{{ best.url }}" target="_blank" rel="noopener">Zum Händler</a>{% endif %}
+      </div>
+      {% if offers_info.personal_ct is not none %}
+      <p class="mt-3 text-sm text-slate-700">Unsere Schätzung für dich: {{ offers_info.personal_ct|eur100 }} je 100 Liter.
+        {% if offers_info.diff is not none %}Das beste Angebot liegt etwa {{ offers_info.diff|abs|ct1 }} Cent je Liter {{ "darüber" if offers_info.diff > 0 else "darunter" }}.{% endif %}
+      </p>
+      {% endif %}
+    {% else %}
+      <p class="text-sm text-slate-700">Noch keine Angebote geladen.</p>
+      {% if no_portal %}<p class="text-xs text-slate-500 mt-1">{{ no_portal_note }}</p>{% endif %}
+    {% endif %}
+
+    <form method="post" action="/offers/refresh" class="mt-4 flex flex-wrap items-end gap-2 text-sm">
+      <label class="flex-1 min-w-[8rem]">Menge in Litern
+        <input class="{{ inp }}" type="number" name="liter" step="100" min="{{ offer_min }}" max="{{ tank_liter }}" value="{{ offer_liter }}" required>
+      </label>
+      {{ btn("Für andere Menge prüfen" if portal_offers else "Angebote abrufen") }}
+    </form>
+    {% if offer_liter_custom %}
+    <form method="post" action="/offers/refresh" class="mt-2 text-xs text-slate-500">
+      <input type="hidden" name="liter" value="auto">
+      Automatisch wären es {{ auto_liter|liter }} Liter.
+      <button type="submit" class="underline text-blue-700">zurück auf automatisch</button>
+    </form>
+    {% endif %}
+
+    {% if portal_offers %}
+    <details class="mt-4">
+      <summary class="cursor-pointer text-sm underline text-blue-700">Alle {{ portal_offers|length }} Angebote</summary>
+      <div class="overflow-x-auto mt-2">
+    <label class="block text-xs text-slate-500 mb-2 md:hidden">Sortieren nach
+      <select id="offer-sort" class="ml-1 rounded-md border border-slate-300 px-2 py-1 text-sm">
+        <option value="2">Preis</option>
+        <option value="4">Lieferzeit</option>
+        <option value="0">Händler</option>
+      </select>
+    </label>
+    <table class="w-full text-sm" id="offer-table">
+      <thead><tr class="text-left text-slate-500">
+        <th class="py-1"><button type="button" class="font-medium" data-col="0" data-type="text">Händler<span class="arrow"></span></button></th>
+        <th>Portal</th>
+        <th><button type="button" class="font-medium" data-col="2" data-type="num">€ je 100 L<span class="arrow"></span></button></th>
+        <th><button type="button" class="font-medium" data-col="3" data-type="num">Gesamt<span class="arrow"></span></button></th>
+        <th><button type="button" class="font-medium" data-col="4" data-type="num">Lieferzeit<span class="arrow"></span></button></th>
+        <th></th><th></th></tr></thead>
+      <tbody>
+      {% for o in portal_offers %}
+      <tr class="border-t border-slate-100 {% if loop.first %}bg-green-50 font-semibold{% endif %}">
+        <td class="py-1" data-sort="{{ (o.dealer or '')|lower }}">{{ o.dealer or "–" }}</td><td>{{ o.portal }}</td>
+        <td data-sort="{{ o.ct_per_liter }}">{{ o.ct_per_liter|eur100 }}</td>
+        <td data-sort="{{ o.total_eur if o.total_eur is not none else '' }}">{% if o.total_eur is not none %}{{ o.total_eur|eur }}{% else %}–{% endif %}</td>
+        <td data-sort="{{ o.delivery_days if o.delivery_days is not none else '' }}">{% if o.delivery_days is not none %}{{ o.delivery_days }} Tage{% else %}–{% endif %}</td>
+        <td>{% if o.url %}<a class="underline text-blue-700 font-normal" href="{{ o.url }}" target="_blank" rel="noopener">zum Portal</a>{% endif %}</td>
+        <td>
+          <form method="post" action="/offer" class="inline">
+            <input type="hidden" name="ct_per_liter" value="{{ '%.2f'|format(o.ct_per_liter) }}">
+            <input type="hidden" name="liter" value="{{ o.liter }}">
+            <input type="hidden" name="dealer" value="{{ o.dealer or '' }}">
+            <input type="hidden" name="portal" value="{{ o.portal }}">
+            <input type="hidden" name="date" value="{{ o.date }}">
+            <button type="submit" class="underline text-slate-700 text-xs font-normal">Als mein Angebot merken</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <script>
+    (function () {
+      var table = document.getElementById("offer-table");
+      if (!table) return;
+      var body = table.tBodies[0], heads = table.querySelectorAll("button[data-col]");
+      var select = document.getElementById("offer-sort");
+      var state = {col: 2, dir: 1};
+      function val(row, col, type) {
+        var v = row.cells[col].getAttribute("data-sort");
+        if (type === "num") return v === "" || v === null ? null : parseFloat(v);
+        return v || "";
+      }
+      function sortBy(col, dir, type) {
+        var rows = Array.prototype.slice.call(body.rows);
+        rows.sort(function (a, b) {
+          var x = val(a, col, type), y = val(b, col, type);
+          if (type === "num") {
+            if (x === null && y === null) return 0;
+            if (x === null) return 1;
+            if (y === null) return -1;
+            return (x - y) * dir;
+          }
+          return x.localeCompare(y, "de") * dir;
+        });
+        rows.forEach(function (r) { body.appendChild(r); });
+        state = {col: col, dir: dir};
+        heads.forEach(function (h) {
+          h.querySelector(".arrow").textContent =
+            Number(h.getAttribute("data-col")) === col ? (dir === 1 ? " \u25B2" : " \u25BC") : "";
+        });
+        if (select && select.querySelector('option[value="' + col + '"]')) select.value = String(col);
+      }
+      heads.forEach(function (h) {
+        h.addEventListener("click", function () {
+          var col = Number(h.getAttribute("data-col"));
+          sortBy(col, state.col === col ? -state.dir : 1, h.getAttribute("data-type"));
+        });
+      });
+      if (select) select.addEventListener("change", function () {
+        var col = Number(select.value);
+        sortBy(col, 1, col === 0 ? "text" : "num");
+      });
+      sortBy(2, 1, "num");
+    })();
+    </script>
+      </div>
+    </details>
+    {% else %}
+    <ul class="mt-3 text-sm list-disc ml-5">
+      <li><a class="underline text-blue-700" href="https://www.esyoil.com/" target="_blank" rel="noopener">esyoil</a></li>
+      <li><a class="underline text-blue-700" href="https://www.heizoel24.de/" target="_blank" rel="noopener">HeizOel24</a></li>
+    </ul>
+    {% endif %}
+  </section>
+
+  {# 3. Dein Tank #}
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <h2 class="font-semibold mb-1">Dein Tank</h2>
+    <p class="text-lg">Etwa <strong>{{ cur_liter|liter }} Liter</strong> im Tank (von {{ tank_liter|liter(1) }}).</p>
+    <div class="mt-2 h-3 w-full rounded-full bg-slate-200 overflow-hidden" role="img" aria-label="Tank zu {{ '%.0f'|format(cur_percent) }} Prozent gefüllt">
+      <div class="h-3 rounded-full {{ bar_color }}" style="width: {{ '%.0f'|format(cur_percent) }}%"></div>
+    </div>
+    {% if rec %}
+    <p class="mt-2 text-sm text-slate-700">Reicht bis etwa {{ reach_date|datum_lang }}. Spätestens bestellen am {{ rec.latest_order_date|datum_lang }}.</p>
+    {% endif %}
+    {% if stale_days > 30 %}
+    <p class="mt-3 rounded-md bg-amber-100 text-amber-900 text-sm px-3 py-2">Dein letzter Stand ist {{ stale_days }} Tage alt. Wie viel ist heute im Tank?</p>
+    {% endif %}
+    <form method="post" action="/fill-level" class="mt-3 flex flex-wrap items-end gap-2 text-sm">
+      <label class="flex-1 min-w-[8rem]">Liter im Tank heute
+        <input class="{{ inp }}" type="number" name="liter" min="0" max="{{ tank_liter }}" step="10">
+      </label>
+      {{ btn("Aktualisieren") }}
+      <details class="w-full text-xs text-slate-600">
+        <summary class="cursor-pointer underline">lieber in Prozent</summary>
+        <label class="block mt-2">Tank ist zu ... Prozent gefüllt
+          <input class="block w-28 rounded-md border border-slate-300 px-3 py-2 text-base" type="number" name="fill_percent" min="0" max="100" step="1">
+        </label>
+      </details>
+    </form>
+    <p class="mt-3 text-xs text-slate-500">
+      {% if learned_liter is not none %}Dein tatsächlicher Verbrauch: etwa {{ learned_liter|liter }} Liter im Jahr (gelernt aus deinen Angaben).
+      {% else %}Angenommener Verbrauch: {{ profile.annual_consumption_liter|liter }} Liter im Jahr.{% endif %}
+    </p>
+  </section>
+
+  {# 4. Was gerade passiert #}
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <h2 class="font-semibold">Was gerade passiert</h2>
+    <p class="text-sm font-medium text-amber-800 mb-2">Das ist eine Einordnung, keine Vorhersage.</p>
+    {% if digest %}
+      <p class="text-xs text-slate-500 mb-1">Stand {{ digest.date|datum_lang }}</p>
+      <p class="text-sm text-slate-700">{{ digest.situation }}</p>
+      {% if digest["items"] %}
+      <details class="mt-3">
+        <summary class="cursor-pointer text-sm underline text-blue-700">Meldungen anzeigen</summary>
+        <ul class="mt-2 space-y-2 text-sm">
+          {% for it in digest["items"] %}
+          <li>
+            <span class="inline-block rounded bg-slate-100 text-slate-700 text-xs px-1.5 py-0.5 mr-1">{{ it.category_label }}</span>
+            <a class="underline text-blue-700" href="{{ it.url }}" target="_blank" rel="noopener">{{ it.title }}</a>
+            {% if it.source %}<span class="text-xs text-slate-500">({{ it.source }})</span>{% endif %}
+            {% if it.note %}<div class="text-xs text-slate-600 ml-1">{{ it.note }}</div>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+    {% elif llm_driver == "none" %}
+      <p class="text-sm text-slate-500">Lagebild ist nicht aktiviert.</p>
+    {% else %}
+      <p class="text-sm text-slate-500">Noch kein Lagebild. Es wird beim nächsten Tageslauf erzeugt.</p>
+    {% endif %}
+    {% if hints_open %}
+      <p class="mt-3 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-sm px-3 py-2">Es gibt Nachrichten zu möglichen Änderungen bei Steuern oder CO2-Abgabe auf Heizöl. Wir prüfen das.{% if user.role == "admin" %} <a class="underline text-blue-700" href="/admin#hinweise">Zu den Hinweisen</a>{% endif %}</p>
+    {% endif %}
+  </section>
+
+  {# 5. Preisverlauf #}
+  <section class="bg-white rounded-lg shadow-sm p-4">
+    <details id="chart-box">
+      <summary class="cursor-pointer font-semibold">Preisverlauf der letzten 2 Jahre</summary>
+      <div class="relative h-64 mt-3"><canvas id="chart"></canvas></div>
+      <p class="mt-2 text-xs text-slate-500">Blaue Linie: Heizölpreis in Cent je Liter. Rote Punkte: deine Käufe. Ein Cent mehr je Liter kostet dich bei {{ need|liter }} Litern etwa {{ eur_per_ct|eur }} mehr.</p>
+    </details>
+  </section>
+
+  {# 6. Eintragen #}
+  <section class="bg-white rounded-lg shadow-sm p-4 space-y-3">
+    <h2 class="font-semibold">Eintragen</h2>
+    <details>
+      <summary class="cursor-pointer text-sm underline text-blue-700">Ich habe Heizöl gekauft</summary>
+      <form method="post" action="/purchase" class="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <label>Datum<input class="{{ inp }}" type="date" name="date" value="{{ today }}"></label>
+        <label>Liter<input class="{{ inp }}" type="number" name="liter" required></label>
+        <label>Preis je 100 Liter (€)<input class="{{ inp }}" type="number" step="0.01" name="ct_per_liter" required></label>
+        <label>Händler<input class="{{ inp }}" name="dealer"></label>
+        <div class="col-span-2">{{ btn("Kauf speichern") }}</div>
+      </form>
+      <p class="mt-2 text-xs text-slate-500">Der Tankstand wird um die gekaufte Menge erhöht.</p>
+    </details>
+    <details>
+      <summary class="cursor-pointer text-sm underline text-blue-700">Ich habe ein Angebot eingeholt</summary>
+      <form method="post" action="/offer" class="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <label>Preis je 100 Liter (€)<input class="{{ inp }}" type="number" step="0.01" name="ct_per_liter" required></label>
+        <label>Liter<input class="{{ inp }}" type="number" name="liter" value="{{ need }}" required></label>
+        <label>Händler<input class="{{ inp }}" name="dealer"></label>
+        <label>Portal (falls bekannt)<input class="{{ inp }}" name="portal"></label>
+        <label>Datum<input class="{{ inp }}" type="date" name="date" value="{{ today }}"></label>
+        <div class="flex items-end">{{ btn("Angebot merken") }}</div>
+      </form>
+    </details>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    var box = document.getElementById('chart-box');
+    var data = {{ chart_json|safe }};
+    var made = false;
+    function init() {
+      if (made || typeof Chart === 'undefined') return;
+      made = true;
+      new Chart(document.getElementById('chart'), {
+        type: 'line',
+        data: {
+          labels: data.labels,
+          datasets: [
+            {label: 'Heizölpreis (Cent je Liter)', data: data.prices, borderColor: '#2563eb', borderWidth: 1.5, pointRadius: 0, tension: 0.1},
+            {label: 'Meine Käufe', data: data.purchases, showLine: false, pointRadius: 6, pointBackgroundColor: '#dc2626', borderColor: '#dc2626'}
+          ]
+        },
+        options: {maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
+          scales: {x: {ticks: {maxTicksLimit: 8}}}}
+      });
+    }
+    // Chart.js braucht sichtbare Maße: erst beim Öffnen anlegen; am Desktop standardmäßig offen.
+    box.addEventListener('toggle', function () { if (box.open) init(); });
+    if (window.matchMedia('(min-width: 768px)').matches) box.open = true;
+  })();
+</script>
+{% endblock %}
