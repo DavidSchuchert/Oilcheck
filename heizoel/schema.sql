@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     annual_consumption_liter INTEGER NOT NULL,
     min_order_liter          INTEGER NOT NULL DEFAULT 1000,
     lead_days                INTEGER NOT NULL DEFAULT 10,  -- Lieferzeit in Tagen
-    notify_channel           TEXT NOT NULL DEFAULT 'mail' CHECK (notify_channel IN ('mail', 'none')),
+    notify_channel           TEXT NOT NULL DEFAULT 'none' CHECK (notify_channel IN ('mail', 'none')),
     threshold_percentile     INTEGER NOT NULL DEFAULT 20,
     offer_liter              INTEGER,                  -- Wunschmenge für Angebote, NULL = automatisch aus Bedarf
     learned_annual_liter     REAL,                     -- aus Füllständen gelernter Jahresverbrauch

@@ -32,6 +32,9 @@ HTML, kein API-Key). esyoil schließt diese URL in robots.txt für Crawler aus; 
 sparsam als Ersatz für den manuellen Browseraufruf ab. HeizOel24 ist ausgenommen, deren AGB
 verbieten automatisierten Zugriff ausdrücklich. Fällt der Abruf aus, zeigt das Dashboard Links.
 
+Mail ist bewusst aus: Empfehlung und Tankstand-Erinnerung stehen im Dashboard. Wer doch Mails will,
+setzt die `HEIZOEL_SMTP_*`-Werte in `.env` und stellt `notify_channel` des Profils in der Datenbank auf `mail`.
+
 Nachrichten-Lagebild (Phase 2) einschalten: in `.env` `HEIZOEL_LLM_DRIVER=anthropic` (plus
 `HEIZOEL_ANTHROPIC_API_KEY` oder `ANTHROPIC_API_KEY` in der Umgebung) oder `=ollama` mit laufendem
 Ollama und `HEIZOEL_LLM_MODEL=<modellname>`. Dann läuft es im Tageslauf mit; manuell:

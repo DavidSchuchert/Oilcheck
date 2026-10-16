@@ -12,13 +12,6 @@
       {{ field("Verbrauch im Jahr (Liter)", "annual", p.annual_consumption_liter, "number", "required min=100", "Steht auf alten Rechnungen, sonst Wohnfläche × 15 Liter.") }}
       {{ field("Kleinste Menge, die du bestellen kannst (Liter)", "min_order", p.min_order_liter, "number", "required min=100") }}
       {{ field("Wie viele Tage dauert die Lieferung?", "lead_days", p.lead_days, "number", "required min=0") }}
-      <label class="block text-sm">
-        <span class="text-slate-700">Benachrichtigung</span>
-        <select name="notify" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2">
-          <option value="mail" {% if p.notify_channel == "mail" %}selected{% endif %}>Per E-Mail</option>
-          <option value="none" {% if p.notify_channel == "none" %}selected{% endif %}>Keine</option>
-        </select>
-      </label>
       <label class="block text-sm sm:col-span-2">
         <span class="text-slate-700">Ab wann gilt für dich günstig?</span>
         <select name="threshold_percentile" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2">

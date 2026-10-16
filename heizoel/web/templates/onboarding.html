@@ -23,13 +23,6 @@
       <div class="mt-3 grid sm:grid-cols-2 gap-4">
         {{ field("Kleinste Menge, die du bestellen kannst (Liter)", "min_order", form.min_order, "number", "required min=100") }}
         {{ field("Wie viele Tage dauert die Lieferung?", "lead_days", form.lead_days, "number", "required min=0") }}
-        <label class="block text-sm">
-          <span class="text-slate-700">Benachrichtigung</span>
-          <select name="notify" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2">
-            <option value="mail" {% if form.notify == "mail" %}selected{% endif %}>Per E-Mail</option>
-            <option value="none" {% if form.notify == "none" %}selected{% endif %}>Keine</option>
-          </select>
-        </label>
       </div>
     </details>
     <div>{{ btn("Speichern und starten") }}</div>

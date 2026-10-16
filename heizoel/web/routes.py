@@ -302,7 +302,7 @@ def onboarding(
     annual: str = Form(""),
     min_order: str = Form("1000"),
     lead_days: str = Form("10"),
-    notify: str = Form("mail"),
+    notify: str = Form("none"),
     half: str = Form(""),
     user=DEP_user,
 ):
@@ -743,7 +743,7 @@ def settings_save(
     annual: str = Form(""),
     min_order: str = Form(""),
     lead_days: str = Form(""),
-    notify: str = Form("mail"),
+    notify: str = Form("none"),
     threshold_percentile: str = Form("20"),
     user=DEP_profile,
 ):
