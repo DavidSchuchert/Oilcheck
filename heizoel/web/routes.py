@@ -1004,3 +1004,12 @@ def admin_manual_price(
     set_manual_price(day, price)  # lädt Brent/EURUSD für den Tag nach, damit der Wert als Margen-Anker wirkt
     _flash(request, "Referenzpreis gespeichert. Für eine neue Historie danach 'heizoel backfill' ausführen.")
     return _go("/admin")
+
+
+@router.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    from pathlib import Path
+
+    from fastapi.responses import FileResponse
+
+    return FileResponse(Path(__file__).with_name("static") / "favicon.svg", media_type="image/svg+xml")
